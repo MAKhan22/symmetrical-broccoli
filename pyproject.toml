@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rwrt"
+version = "0.1.0"
+description = "Right Word at the Right Time — adaptive Turkish vocabulary recommendations"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "faiss-cpu>=1.7.4",
+    "numpy>=1.24",
+    "sentence-transformers>=3.0",
+    "torch>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+rwrt-build-index = "rwrt.cli:build_index_main"
+rwrt-recommend = "rwrt.cli:recommend_main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rwrt*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

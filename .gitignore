@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+#database, too large to commit
+primary_graph.sqlite
+
+# FAISS index artifacts and learner profiles
+data/
+CS455*
