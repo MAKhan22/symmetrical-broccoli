@@ -34,7 +34,14 @@ class PipelineConfig:
     return_n: int = 5
     use_cross_encoder: bool = True
 
-    query_strategy: Literal["mean_embedding"] = "mean_embedding"
+    query_strategy: Literal[
+        "mean_embedding",
+        "weighted_mean",
+        "inverse_weighted_mean",
+        "topic",
+    ] = "mean_embedding"
+    query_word_selection: Literal["diverse", "topic"] = "diverse"
+    topic_keyword: str | None = None
     frequency_boost: float = 0.0
 
     max_query_words: int = 64
@@ -59,3 +66,7 @@ class PipelineConfig:
     @property
     def embeddings_path(self) -> Path:
         return self.index_dir / "embeddings.npy"
+
+    @property
+    def meta_path(self) -> Path:
+        return self.index_dir / "meta.json"

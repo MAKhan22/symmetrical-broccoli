@@ -66,7 +66,7 @@ class EmbeddingIndex:
             "num_vectors": len(words),
             "dimension": embeddings.shape[1],
         }
-        (self._config.index_dir / "meta.json").write_text(
+        (self._config.meta_path).write_text(
             json.dumps(meta, indent=2),
             encoding="utf-8",
         )
@@ -90,11 +90,48 @@ class EmbeddingIndex:
         if self._config.embeddings_path.is_file():
             embeddings = np.load(self._config.embeddings_path)
 
+        self._validate_meta(expected_vectors=len(words))
         self._attach(words, embeddings, index)
 
     def ensure_loaded(self) -> None:
         if self._index is None:
             self.load()
+
+    def _validate_meta(self, *, expected_vectors: int) -> None:
+        meta_path = self._config.meta_path
+        if not meta_path.is_file():
+            return
+
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        mismatches: list[str] = []
+
+        if meta.get("bi_model") != self._config.bi_model:
+            mismatches.append(
+                f"bi_model: index={meta.get('bi_model')!r} "
+                f"config={self._config.bi_model!r}"
+            )
+        if meta.get("min_weight") != self._config.min_weight:
+            mismatches.append(
+                f"min_weight: index={meta.get('min_weight')!r} "
+                f"config={self._config.min_weight!r}"
+            )
+        if meta.get("max_vocab_size") != self._config.max_vocab_size:
+            mismatches.append(
+                f"max_vocab_size: index={meta.get('max_vocab_size')!r} "
+                f"config={self._config.max_vocab_size!r}"
+            )
+        if meta.get("num_vectors") != expected_vectors:
+            mismatches.append(
+                f"num_vectors: meta={meta.get('num_vectors')!r} "
+                f"words.txt={expected_vectors!r}"
+            )
+
+        if mismatches:
+            detail = "\n  ".join(mismatches)
+            raise ValueError(
+                f"Index metadata does not match current configuration:\n  {detail}\n"
+                "Rebuild with `rwrt-build-index`."
+            )
 
     def _attach(
         self,
@@ -117,6 +154,16 @@ class EmbeddingIndex:
             return self._embeddings[idx].copy()
         return self._index.reconstruct(idx)
 
+    def encode_text(self, text: str) -> np.ndarray:
+        """Embed free text with the bi-encoder (e.g. a topic keyword)."""
+        model = get_bi_encoder(self._config.bi_model, self._config.device)
+        vec = model.encode(
+            text,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+        )
+        return np.asarray(vec, dtype=np.float32).reshape(-1)
+
     def mean_embedding(self, words: list[str]) -> np.ndarray:
         """Calculate the mean embedding of a list of words."""
         if not words:
@@ -128,8 +175,25 @@ class EmbeddingIndex:
             mean = mean / norm
         return mean.astype(np.float32)
 
-    #TODO: add other query methods like max_embedding, min_embedding, etc.
-    # Or other more sophisticated query methods like clustering, etc.
+    def weighted_mean_embedding(
+        self,
+        words: list[str],
+        weights: dict[str, float],
+    ) -> np.ndarray:
+        """Frequency-weighted mean embedding, L2-normalized."""
+        if not words:
+            raise ValueError("Cannot build query embedding from an empty known-word set.")
+        vectors = np.stack([self.embedding_for(w) for w in words], axis=0)
+        w = np.array([weights.get(word, 1.0) for word in words], dtype=np.float32)
+        total = w.sum()
+        if total <= 0:
+            return self.mean_embedding(words)
+        w = w / total
+        mean = (vectors * w[:, np.newaxis]).sum(axis=0)
+        norm = np.linalg.norm(mean)
+        if norm > 0:
+            mean = mean / norm
+        return mean.astype(np.float32)
 
     def search(self, query_vec: np.ndarray, k: int) -> list[tuple[str, float]]:
         self.ensure_loaded()

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from rwrt.config import PipelineConfig
 from rwrt.index import EmbeddingIndex
+from rwrt.interactive import run_learn_session
 from rwrt.learner import LearnerProfile
 from rwrt.pipeline import RecommendationPipeline
 from rwrt.vocabulary import VocabularyStore
@@ -41,15 +42,52 @@ def _base_parser() -> argparse.ArgumentParser:
     return p
 
 
-def build_index_main(argv: list[str] | None = None) -> int:
-    parser = _base_parser()
+def _add_pipeline_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--no-save-embeddings",
-        action="store_true",
-        help="Skip writing embeddings.npy (saves disk space)",
+        "--bi-model",
+        type=str,
+        default=None,
+        help="Sentence-transformers bi-encoder model name",
     )
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "--cross-model",
+        type=str,
+        default=None,
+        help="Cross-encoder model name for reranking",
+    )
+    parser.add_argument(
+        "--query-strategy",
+        choices=("mean_embedding", "weighted_mean", "inverse_weighted_mean", "topic"),
+        default=None,
+        help="How to build the bi-encoder query vector",
+    )
+    parser.add_argument(
+        "--max-query-words",
+        type=int,
+        default=None,
+        help="Cap known words used in bi-encoder and cross-encoder queries",
+    )
+    parser.add_argument(
+        "--frequency-boost",
+        type=float,
+        default=None,
+        help="Add boost * log1p(freq) to bi-encoder scores before reranking",
+    )
+    parser.add_argument(
+        "--query-word-selection",
+        choices=("diverse", "topic"),
+        default=None,
+        help="How to subsample known words for queries (default: diverse)",
+    )
+    parser.add_argument(
+        "--topic",
+        type=str,
+        default=None,
+        help="Topic keyword for query_word_selection=topic",
+    )
 
+
+def _config_from_args(args: argparse.Namespace) -> PipelineConfig:
     cfg = PipelineConfig(
         db_path=args.db,
         index_dir=args.index_dir,
@@ -58,7 +96,41 @@ def build_index_main(argv: list[str] | None = None) -> int:
     )
     if args.device:
         cfg.device = args.device
+    if getattr(args, "bi_model", None):
+        cfg.bi_model = args.bi_model
+    if getattr(args, "cross_model", None):
+        cfg.cross_model = args.cross_model
+    if getattr(args, "query_strategy", None):
+        cfg.query_strategy = args.query_strategy
+    if getattr(args, "max_query_words", None) is not None:
+        cfg.max_query_words = args.max_query_words
+    if getattr(args, "frequency_boost", None) is not None:
+        cfg.frequency_boost = args.frequency_boost
+    if getattr(args, "query_word_selection", None):
+        cfg.query_word_selection = args.query_word_selection
+    if getattr(args, "topic", None):
+        cfg.topic_keyword = args.topic
+    if getattr(args, "retrieve_k", None) is not None:
+        cfg.retrieve_k = args.retrieve_k
+    if getattr(args, "return_n", None) is not None:
+        cfg.return_n = args.return_n
+    if getattr(args, "bi_only", False):
+        cfg.use_cross_encoder = False
     cfg.resolve()
+    return cfg
+
+
+def build_index_main(argv: list[str] | None = None) -> int:
+    parser = _base_parser()
+    _add_pipeline_args(parser)
+    parser.add_argument(
+        "--no-save-embeddings",
+        action="store_true",
+        help="Skip writing embeddings.npy (saves disk space)",
+    )
+    args = parser.parse_args(argv)
+
+    cfg = _config_from_args(args)
 
     vocab = VocabularyStore(cfg)
     vocab.load()
@@ -72,6 +144,7 @@ def build_index_main(argv: list[str] | None = None) -> int:
 
 def recommend_main(argv: list[str] | None = None) -> int:
     parser = _base_parser()
+    _add_pipeline_args(parser)
     parser.add_argument(
         "known",
         nargs="*",
@@ -97,18 +170,7 @@ def recommend_main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    cfg = PipelineConfig(
-        db_path=args.db,
-        index_dir=args.index_dir,
-        min_weight=args.min_weight,
-        max_vocab_size=args.max_vocab,
-        retrieve_k=args.retrieve_k,
-        return_n=args.return_n,
-        use_cross_encoder=not args.bi_only,
-    )
-    if args.device:
-        cfg.device = args.device
-    cfg.resolve()
+    cfg = _config_from_args(args)
 
     vocab = VocabularyStore(cfg)
     vocab.load()
@@ -136,7 +198,7 @@ def recommend_main(argv: list[str] | None = None) -> int:
     index.load()
 
     pipe = RecommendationPipeline(cfg, vocab, index=index)
-    results = pipe.recommend(known)
+    results = pipe.recommend(known, topic_keyword=cfg.topic_keyword)
 
     if args.profile is not None and not args.no_save_profile:
         profile.save(args.profile)
@@ -150,3 +212,62 @@ def recommend_main(argv: list[str] | None = None) -> int:
         freq = c.frequency if c.frequency is not None else "—"
         print(f"{i}. {c.word:20}  bi={bi}  cross={cross}  freq={freq}")
     return 0
+
+
+def learn_main(argv: list[str] | None = None) -> int:
+    parser = _base_parser()
+    _add_pipeline_args(parser)
+    parser.add_argument(
+        "known",
+        nargs="*",
+        help="Optional words to seed the profile before the session",
+    )
+    parser.add_argument("-k", "--retrieve-k", type=int, default=200)
+    parser.add_argument("-n", "--return-n", type=int, default=5)
+    parser.add_argument(
+        "--bi-only",
+        action="store_true",
+        help="Skip cross-encoder reranking",
+    )
+    parser.add_argument(
+        "--profile",
+        type=Path,
+        required=True,
+        help="JSON learner profile to load/update (required)",
+    )
+    args = parser.parse_args(argv)
+
+    cfg = _config_from_args(args)
+
+    vocab = VocabularyStore(cfg)
+    vocab.load()
+
+    profile = LearnerProfile.load_or_create(args.profile, vocabulary=vocab)
+    if args.known:
+        added, rejected = profile.add_many(args.known)
+        if rejected:
+            print(f"Ignored (not in vocabulary): {', '.join(rejected)}", file=sys.stderr)
+        if added:
+            print(f"Added {added} word(s) to profile.", file=sys.stderr)
+
+    if len(profile) == 0:
+        print(
+            "Profile has no known words. Seed with positional words or edit the profile.",
+            file=sys.stderr,
+        )
+        return 1
+
+    index = EmbeddingIndex(cfg, vocab)
+    index.load()
+
+    pipe = RecommendationPipeline(cfg, vocab, index=index)
+
+    def save_profile() -> None:
+        profile.save(args.profile)
+
+    return run_learn_session(
+        profile,
+        pipe,
+        return_n=cfg.return_n,
+        on_save=save_profile,
+    )

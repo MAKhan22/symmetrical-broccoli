@@ -32,7 +32,7 @@ class RecommendationPipeline:
         self._vocabulary = vocabulary
         self._index = index or EmbeddingIndex(config, vocabulary)
         self._retriever = BiEncoderRetriever(config, vocabulary, self._index)
-        self._reranker = CrossEncoderReranker(config)
+        self._reranker = CrossEncoderReranker(config, vocabulary=vocabulary, index=self._index)
 
     @property
     def index(self) -> EmbeddingIndex:
@@ -45,6 +45,7 @@ class RecommendationPipeline:
         retrieve_k: int | None = None,
         return_n: int | None = None,
         use_cross_encoder: bool | None = None,
+        topic_keyword: str | None = None,
     ) -> list[Candidate]:
         known = _known_set(known_words)
         retrieve_k = retrieve_k if retrieve_k is not None else self._config.retrieve_k
@@ -55,14 +56,18 @@ class RecommendationPipeline:
             else self._config.use_cross_encoder
         )
 
-        candidates = self._retriever.retrieve(known, k=retrieve_k)
+        candidates = self._retriever.retrieve(
+            known, k=retrieve_k, topic_keyword=topic_keyword
+        )
 
         # This is an optional parameter that can be used to boost the score of high-frequency words.
         if self._config.frequency_boost > 0:
             candidates = self._apply_frequency_boost(candidates)
 
         if use_cross:
-            return self._reranker.rerank(known, candidates, n=return_n)
+            return self._reranker.rerank(
+                known, candidates, n=return_n, topic_keyword=topic_keyword
+            )
 
         candidates.sort(key=lambda c: c.final_score, reverse=True)
         return candidates[:return_n]
