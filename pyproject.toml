@@ -21,6 +21,7 @@ dev = ["pytest>=7.0"]
 [project.scripts]
 rwrt-build-index = "rwrt.cli:build_index_main"
 rwrt-recommend = "rwrt.cli:recommend_main"
+rwrt-learn = "rwrt.cli:learn_main"
 
 [tool.setuptools.packages.find]
 where = ["."]
