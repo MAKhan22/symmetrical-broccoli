@@ -5,6 +5,7 @@ import pytest
 from rwrt.config import PipelineConfig
 from rwrt.rerank import CrossEncoderReranker
 from rwrt.types import Candidate
+from rwrt.vocabulary import VocabularyStore
 
 
 def test_format_query_sorted() -> None:
@@ -14,12 +15,12 @@ def test_format_query_sorted() -> None:
     assert q == "Bildiğim Türkçe kelimeler: bir, ev"
 
 
-def test_format_query_truncates_to_max_query_words() -> None:
+def test_format_query_truncates_with_diverse_selection(vocab: VocabularyStore) -> None:
     cfg = PipelineConfig(max_query_words=2)
-    reranker = CrossEncoderReranker(cfg)
-    q = reranker.format_query({"a", "b", "c"})
-    assert q.endswith("b, c")
-    assert "a" not in q
+    reranker = CrossEncoderReranker(cfg, vocabulary=vocab)
+    q = reranker.format_query({"bir", "ev", "kitap", "nadir"})
+    assert "bir" not in q
+    assert q.count(",") == 1
 
 
 def test_rerank_empty_candidates() -> None:

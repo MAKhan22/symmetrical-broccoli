@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 
@@ -63,6 +64,19 @@ def mini_faiss_index(cfg: PipelineConfig, vocab: VocabularyStore) -> EmbeddingIn
     faiss.write_index(index, str(cfg.faiss_path))
     cfg.words_path.write_text("\n".join(words), encoding="utf-8")
     np.save(cfg.embeddings_path, embeddings)
+    cfg.meta_path.write_text(
+        json.dumps(
+            {
+                "bi_model": cfg.bi_model,
+                "min_weight": cfg.min_weight,
+                "max_vocab_size": cfg.max_vocab_size,
+                "num_vectors": len(words),
+                "dimension": dim,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     emb_index = EmbeddingIndex(cfg, vocab)
     emb_index.load()

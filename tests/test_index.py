@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import json
 import numpy as np
 import pytest
 
@@ -42,3 +43,38 @@ def test_search_returns_scored_words(mini_faiss_index: EmbeddingIndex) -> None:
     words = {w for w, _ in hits}
     assert "bir" in words
     assert all(isinstance(score, float) for _, score in hits)
+
+
+def test_weighted_mean_embedding_normalized(mini_faiss_index: EmbeddingIndex) -> None:
+    weights = {"bir": 100.0, "ev": 1.0}
+    vec = mini_faiss_index.weighted_mean_embedding(["bir", "ev"], weights)
+    norm = np.linalg.norm(vec)
+    assert abs(norm - 1.0) < 1e-5
+
+
+def test_load_validates_meta_mismatch(
+    cfg: PipelineConfig, vocab: VocabularyStore, mini_faiss_index: EmbeddingIndex
+) -> None:
+    cfg.meta_path.write_text(
+        json.dumps(
+            {
+                "bi_model": "other-model",
+                "min_weight": cfg.min_weight,
+                "max_vocab_size": cfg.max_vocab_size,
+                "num_vectors": len(vocab.words()),
+            }
+        ),
+        encoding="utf-8",
+    )
+    index = EmbeddingIndex(cfg, vocab)
+    with pytest.raises(ValueError, match="Index metadata does not match"):
+        index.load()
+
+
+def test_load_without_meta_succeeds(
+    cfg: PipelineConfig, vocab: VocabularyStore, mini_faiss_index: EmbeddingIndex
+) -> None:
+    cfg.meta_path.unlink()
+    index = EmbeddingIndex(cfg, vocab)
+    index.load()
+    assert len(index.words) == len(vocab.words())

@@ -18,3 +18,4 @@ def test_artifact_paths_under_index_dir(tmp_path: Path) -> None:
     assert cfg.faiss_path == tmp_path / "faiss" / "index.faiss"
     assert cfg.words_path == tmp_path / "faiss" / "words.txt"
     assert cfg.embeddings_path == tmp_path / "faiss" / "embeddings.npy"
+    assert cfg.meta_path == tmp_path / "faiss" / "meta.json"
