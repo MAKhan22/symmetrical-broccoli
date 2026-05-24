@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from rwrt.cli import build_index_main, learn_main, recommend_main
+from rwrt.cli import build_index_main, chat_main, learn_main, recommend_main
 
 
 def test_recommend_requires_known_or_profile() -> None:
@@ -170,3 +170,36 @@ def test_recommend_honors_pipeline_flags(
     assert cfg.query_strategy == "weighted_mean"
     assert cfg.max_query_words == 32
     assert cfg.frequency_boost == 0.5
+
+
+@patch("rwrt.cli.run_chat_session")
+@patch("rwrt.cli.OpenRouterClient")
+@patch("rwrt.cli.EmbeddingIndex")
+def test_chat_main_loads_profile_and_llm(
+    mock_index_cls: MagicMock,
+    mock_llm_cls: MagicMock,
+    mock_session: MagicMock,
+    tmp_path: Path,
+    tiny_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    mock_index_cls.return_value = MagicMock()
+    mock_session.return_value = 0
+
+    profile = tmp_path / "learner.json"
+    argv = [
+        "--db",
+        str(tiny_db),
+        "--index-dir",
+        str(tmp_path / "faiss"),
+        "--min-weight",
+        "1",
+        "--profile",
+        str(profile),
+        "--env-file",
+        str(tmp_path / "missing.env"),
+        "bir",
+    ]
+    assert chat_main(argv) == 0
+    mock_session.assert_called_once()
