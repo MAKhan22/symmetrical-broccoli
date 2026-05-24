@@ -8,7 +8,9 @@ from rwrt.config import PipelineConfig
 from rwrt.index import EmbeddingIndex
 from rwrt.interactive import run_learn_session
 from rwrt.learner import LearnerProfile
+from rwrt.llm import LLMConfig, OpenRouterClient
 from rwrt.pipeline import RecommendationPipeline
+from rwrt.tui import run_chat_session
 from rwrt.vocabulary import VocabularyStore
 
 
@@ -269,5 +271,79 @@ def learn_main(argv: list[str] | None = None) -> int:
         profile,
         pipe,
         return_n=cfg.return_n,
+        on_save=save_profile,
+    )
+
+
+def chat_main(argv: list[str] | None = None) -> int:
+    parser = _base_parser()
+    _add_pipeline_args(parser)
+    parser.add_argument(
+        "known",
+        nargs="*",
+        help="Optional words to seed the profile before the session",
+    )
+    parser.add_argument("-k", "--retrieve-k", type=int, default=200)
+    parser.add_argument("-n", "--return-n", type=int, default=5)
+    parser.add_argument(
+        "--bi-only",
+        action="store_true",
+        help="Skip cross-encoder reranking",
+    )
+    parser.add_argument(
+        "--profile",
+        type=Path,
+        required=True,
+        help="JSON learner profile to load/update (required)",
+    )
+    parser.add_argument(
+        "--env-file",
+        type=str,
+        default=".env",
+        help="Path to .env with OPENROUTER_API_KEY (default: .env)",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        llm_cfg = LLMConfig.from_env(env_file=args.env_file)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    cfg = _config_from_args(args)
+
+    vocab = VocabularyStore(cfg)
+    vocab.load()
+
+    profile = LearnerProfile.load_or_create(args.profile, vocabulary=vocab)
+    if args.known:
+        added, rejected = profile.add_many(args.known)
+        if rejected:
+            print(f"Ignored (not in vocabulary): {', '.join(rejected)}", file=sys.stderr)
+        if added:
+            print(f"Added {added} word(s) to profile.", file=sys.stderr)
+
+    if len(profile) == 0:
+        print(
+            "Profile has no known words. Seed with positional words or edit the profile.",
+            file=sys.stderr,
+        )
+        return 1
+
+    index = EmbeddingIndex(cfg, vocab)
+    index.load()
+
+    pipe = RecommendationPipeline(cfg, vocab, index=index)
+    llm = OpenRouterClient(llm_cfg)
+
+    def save_profile() -> None:
+        profile.save(args.profile)
+
+    return run_chat_session(
+        profile,
+        pipe,
+        llm,
+        return_n=cfg.return_n,
+        topic_keyword=cfg.topic_keyword,
         on_save=save_profile,
     )
