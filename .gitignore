@@ -222,4 +222,6 @@ primary_graph.sqlite
 
 # FAISS index artifacts and learner profiles
 data/
+
+.ipynb_checkpoints/
 CS455*
