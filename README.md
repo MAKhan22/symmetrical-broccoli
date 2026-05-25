@@ -1,6 +1,6 @@
 # symmetrical-broccoli
 
-**Right Word at the Right Time (rwrt)** — adaptive next-word recommendations for Turkish learners who already know some of the language. Given the words a learner knows, rwrt suggests semantically related words they have not learned yet, using bi-encoder retrieval over a FAISS index, optional cross-encoder reranking, and an optional OpenRouter-powered tutor that explains each word.
+**Right Word at the Right Time (rwrt)** — adaptive next-word recommendations for Turkish learners who already know some of the language. Given the words a learner knows, rwrt suggests semantically and morphologically related unknown words using bi-encoder retrieval over a FAISS index with a multi-objective feature scorer, an optional cross-encoder reranker, and an optional OpenRouter-powered tutor that explains each word.
 
 ## How it works
 
@@ -10,23 +10,32 @@ primary_graph.sqlite ──► VocabularyStore ──► EmbeddingIndex ──�
   (word frequencies)      (filter/cap)        (bi-encoder + FAISS)
 
                          ONLINE (each session)
-LearnerProfile ──► BiEncoderRetriever ──► CrossEncoderReranker ──► suggestions
- (known words)      (FAISS search)         (optional rerank)
+LearnerProfile ──► BiEncoderRetriever ──► WeightedFeatureReranker ──► suggestions
+ (known words)      (FAISS search)         (multi-objective scorer*)
 
                          CHAT TUI (rwrt-chat)
 pick a suggestion ──► OpenRouter LLM ──► EN/TR explanation + examples + Q&A
-                   ──► word added to profile
+                  ──► word added to profile
+
+* Can be swapped for cross-encoder reranker via --reranker-type cross_encoder
 ```
 
 **Recommendation pipeline**
 
 1. Load the learner's known words (CLI args, a JSON profile, or `LearnerProfile` in Python).
-2. **Subsample** known words for the query (`query_word_selection`) — a diverse mix of middle- and lower-frequency words so suggestions evolve as the learner grows, rather than staying anchored on their first high-frequency words.
+2. **Subsample** known words for the query (`query_word_selection`) — a diverse mix of middle- and lower-frequency words so suggestions evolve as the learner grows.
 3. **Build a query vector** (`query_strategy`) from those words, or directly from a topic keyword.
 4. **Search FAISS** for semantically similar words the learner does not know.
-5. Optionally **rerank** candidates with a cross-encoder and return the top *n* suggestions.
+5. **Rerank** candidates with the configured reranker.
 
-Each suggestion is a `Candidate` with bi-encoder score, optional cross-encoder score, and corpus frequency.
+### Reranking
+
+| Reranker | Behaviour | Default |
+|----------|-----------|---------|
+| `weighted_feature` | Multi-objective: `w_s·S + w_f·F + w_m·M − w_d·D − w_e·E` with iterative MMR diversity selection | **Yes** |
+| `cross_encoder` | Transformer cross-encoder scores each candidate against a known-word query | No |
+
+The weighted feature scorer models pedagogical utility directly: high-frequency useful words score higher, morphological root sharing is rewarded, and diversity is enforced via MMR (maximum marginal relevance) — each new pick must be dissimilar to already-selected candidates.
 
 **Chat TUI** (`rwrt-chat`) wraps the same pipeline: you pick a suggestion, the LLM explains it in English and Turkish with example sentences, you can ask follow-up questions, then the word is saved to your profile.
 
@@ -98,6 +107,14 @@ rwrt-recommend merhaba teşekkür evet kitap -n 5
 rwrt-learn --profile data/learner.json merhaba evet
 ```
 
+**Custom reranking weights:**
+
+```bash
+rwrt-recommend --profile data/learner.json \
+  --weight-semantic 0.4 --weight-frequency 0.3 --weight-morphology 0.2 \
+  --weight-diversity 0.05 --weight-difficulty 0.05
+```
+
 ## Commands
 
 | Command | Purpose |
@@ -137,6 +154,12 @@ Available on `rwrt-recommend`, `rwrt-learn`, and `rwrt-chat` (and partially on `
 | `--max-query-words` | `64` | Max known words in a query |
 | `--topic` | none | Topic keyword (for topic modes) |
 | `--frequency-boost` | `0.0` | `boost × log1p(freq)` added to bi scores |
+| `--reranker-type` | `weighted_feature` | Reranker: `weighted_feature` or `cross_encoder` |
+| `--weight-semantic` | `0.35` | Semantic similarity weight |
+| `--weight-frequency` | `0.35` | Frequency utility weight |
+| `--weight-morphology` | `0.10` | Root overlap weight |
+| `--weight-diversity` | `0.15` | Diversity penalty weight |
+| `--weight-difficulty` | `0.05` | Difficulty penalty weight |
 
 ### Per-command flags
 
@@ -153,7 +176,7 @@ Available on `rwrt-recommend`, `rwrt-learn`, and `rwrt-chat` (and partially on `
 | `known` | — | Positional known words |
 | `-k`, `--retrieve-k` | `200` | FAISS candidates before reranking |
 | `-n`, `--return-n` | `5` | Final suggestions |
-| `--bi-only` | off | Skip cross-encoder |
+| `--bi-only` | off | Skip all reranking (sort by bi-encoder score) |
 | `--profile` | none | Load/update JSON profile |
 | `--no-save-profile` | off | Don't write profile after run |
 
@@ -184,8 +207,14 @@ rwrt-chat --profile data/learner.json --query-strategy topic --topic yemek
 # Emphasize rarer known words in the query vector
 rwrt-recommend --profile data/learner.json --query-strategy inverse_weighted_mean
 
-# Fast bi-encoder-only suggestions
+# Fast bi-encoder-only suggestions (no reranking)
 rwrt-recommend merhaba evet -n 10 --bi-only -k 500
+
+# Switch to cross-encoder reranker
+rwrt-recommend --profile data/learner.json --reranker-type cross_encoder
+
+# Custom reranker weights for more morphological variety
+rwrt-recommend --profile data/learner.json --weight-morphology 0.25 --weight-frequency 0.25
 
 # Rebuild index after changing min_weight or bi_model
 rwrt-build-index --min-weight 10 --max-vocab 50000 --bi-model sentence-transformers/paraphrase-multilingual-mpnet-base-v2
@@ -201,10 +230,15 @@ rwrt-build-index --min-weight 10 --max-vocab 50000 --bi-model sentence-transform
 | `cross_model` | `dbmdz/bert-base-turkish-cased` |
 | `retrieve_k` | `200` |
 | `return_n` | `5` |
-| `use_cross_encoder` | `True` |
+| `reranker_type` | `weighted_feature` |
 | `max_query_words` | `64` |
 | `query_strategy` | `mean_embedding` |
 | `query_word_selection` | `diverse` |
+| `weight_semantic` | `0.35` |
+| `weight_frequency` | `0.35` |
+| `weight_morphology` | `0.10` |
+| `weight_diversity` | `0.15` |
+| `weight_difficulty` | `0.05` |
 
 ### Query strategies (`query_strategy`)
 
@@ -231,7 +265,10 @@ Which known words are subsampled before aggregation (skipped when `query_strateg
 ## Python API
 
 ```python
-from rwrt import LearnerProfile, PipelineConfig, RecommendationPipeline, VocabularyStore
+from rwrt import (
+    LearnerProfile, PipelineConfig, RecommendationPipeline,
+    VocabularyStore, WeightedFeatureReranker,
+)
 
 cfg = PipelineConfig(min_weight=10, max_vocab_size=50_000).resolve()
 vocab = VocabularyStore(cfg)
@@ -243,12 +280,17 @@ profile.learn("merhaba")
 pipe = RecommendationPipeline(cfg, vocab)
 pipe.index.load()
 
+# Uses default weighted_feature reranker
 suggestions = pipe.recommend(profile, return_n=5)
+
+# Cross-encoder mode
 suggestions = pipe.recommend(
-    profile,
-    use_cross_encoder=False,
-    topic_keyword="yemek",
+    profile, use_cross_encoder=True, topic_keyword="yemek",
 )
+
+# No reranking (raw bi-encoder scores)
+suggestions = pipe.recommend(profile, use_cross_encoder=False)
+
 profile.save()
 ```
 
@@ -275,6 +317,15 @@ from rwrt.llm import LLMConfig, OpenRouterClient
 from rwrt.tui import run_chat_session
 
 run_chat_session(profile, pipe, OpenRouterClient(LLMConfig.from_env()), return_n=5)
+```
+
+**Using the weighted feature scorer directly:**
+
+```python
+from rwrt.rerank import WeightedFeatureReranker
+
+reranker = WeightedFeatureReranker(cfg, vocabulary=vocab, index=pipe.index)
+ranked = reranker.rerank(profile.known, candidates, n=5)
 ```
 
 ## Data and artifacts
@@ -311,7 +362,7 @@ rwrt/
   index.py          EmbeddingIndex (FAISS)
   query.py          known-word subsampling (diverse / topic)
   retrieve.py       BiEncoderRetriever
-  rerank.py         CrossEncoderReranker
+  rerank.py         CrossEncoderReranker + WeightedFeatureReranker
   learner.py        LearnerProfile
   pipeline.py       RecommendationPipeline
   interactive.py    rwrt-learn loop
@@ -320,22 +371,38 @@ rwrt/
   cli.py            all entry points
 
 scripts/            CLI wrappers
-tests/              pytest (77 tests)
+tests/              pytest suite
 alpha.ipynb         benchmark notebook
 .env.example        OpenRouter template
 ```
 
 ## Benchmark notebook
 
-`alpha.ipynb` simulates learner profiles (top-*N* known words, next frequency decile as targets) and compares:
+`alpha.ipynb` evaluates pipeline configurations using a **multi-objective evaluation metric** (separate from the reranker weights):
 
-| Method | Description |
-|--------|-------------|
-| `frequency` | Top-frequency unknown words |
-| `bi_only` | Bi-encoder + FAISS |
-| `bi_cross` | Bi-encoder + cross-encoder rerank |
+| Score | Formula | What it measures |
+|-------|---------|------------------|
+| **Combined** | `0.35·S + 0.35·F + 0.10·M − 0.15·D − 0.05·E` | Pedagogical utility (higher = better) |
+| Semantic coherence (S) | Cosine similarity to known-word centroid | Are recommendations semantically relevant? |
+| Frequency (F) | Normalised log-frequency | Are they useful/common words? |
+| Morph diversity (M) | Mean character-prefix overlap with known words | Do they share roots with what the learner knows? |
+| Rec diversity (D) | Mean pairwise embedding similarity in suggestions | Are the suggestions diverse (not synonyms)? |
+| Difficulty penalty (E) | Z-score of frequency drop from known-word average | Are they not too hard? |
 
-Metrics: MRR and Recall@10. Results → `data/faiss_alpha/benchmark_results.json`.
+Profiles are sampled stratified across frequency bands (6 sizes × 5 draws = 30 profiles per config). The benchmark tests **3 bi-encoders × 3 query strategies × 30 profiles** with each reranker type → 720 evaluation rows total.
+
+| Method | Avg Combined | Key finding |
+|--------|-------------|-------------|
+| `bi_only` | 0.559 | Baseline — no reranking |
+| `weighted_feature` | **0.626** | **Best** on every model. Directly optimises the combined objective. |
+| `cross_encoder` | 0.552 | Worse than bi-only baseline — pairwise relevance doesn't align with the multi-objective goal. |
+
+Key findings:
+- **Weighted feature beats cross-encoder by +0.07–0.09 CS** on every model at every profile size.
+- Cross-encoder appears better only if you aggregate across models — it runs on 2 stronger models; weighted_feature runs on all 3.
+- `e5-small` + weighted_feature (0.621) matches or beats cross-encoder on mpnet (0.549) and distiluse (0.555).
+
+Results → `data/faiss_alpha/benchmark_results.json`.
 
 ## Troubleshooting
 
