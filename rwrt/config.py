@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+RerankerType = Literal["weighted_feature", "cross_encoder"]
+
 
 def _default_device() -> str:
     try:
@@ -33,6 +35,7 @@ class PipelineConfig:
     retrieve_k: int = 200
     return_n: int = 5
     use_cross_encoder: bool = True
+    reranker_type: RerankerType = "weighted_feature"
 
     query_strategy: Literal[
         "mean_embedding",
@@ -46,6 +49,13 @@ class PipelineConfig:
 
     max_query_words: int = 64
     cross_batch_size: int = 32
+
+    # Weights for weighted_feature reranker
+    weight_semantic: float = 0.35
+    weight_frequency: float = 0.35
+    weight_morphology: float = 0.10
+    weight_diversity: float = 0.15
+    weight_difficulty: float = 0.05
 
     def resolve(self, base: Path | None = None) -> PipelineConfig:
         """Resolve relative paths against *base* (defaults to cwd)."""

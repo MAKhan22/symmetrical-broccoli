@@ -87,6 +87,19 @@ def _add_pipeline_args(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Topic keyword for query_word_selection=topic",
     )
+    parser.add_argument(
+        "--reranker-type",
+        choices=("weighted_feature", "cross_encoder"),
+        default=None,
+        help="Reranking method (default: weighted_feature)",
+    )
+    for w in ("semantic", "frequency", "morphology", "diversity", "difficulty"):
+        parser.add_argument(
+            f"--weight-{w}",
+            type=float,
+            default=None,
+            help=f"Weight for {w} component in weighted_feature reranker",
+        )
 
 
 def _config_from_args(args: argparse.Namespace) -> PipelineConfig:
@@ -112,6 +125,12 @@ def _config_from_args(args: argparse.Namespace) -> PipelineConfig:
         cfg.query_word_selection = args.query_word_selection
     if getattr(args, "topic", None):
         cfg.topic_keyword = args.topic
+    if getattr(args, "reranker_type", None):
+        cfg.reranker_type = args.reranker_type
+    for w in ("semantic", "frequency", "morphology", "diversity", "difficulty"):
+        val = getattr(args, f"weight_{w}", None)
+        if val is not None:
+            setattr(cfg, f"weight_{w}", val)
     if getattr(args, "retrieve_k", None) is not None:
         cfg.retrieve_k = args.retrieve_k
     if getattr(args, "return_n", None) is not None:

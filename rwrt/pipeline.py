@@ -4,7 +4,7 @@ import math
 from rwrt.config import PipelineConfig
 from rwrt.index import EmbeddingIndex
 from rwrt.learner import LearnerProfile
-from rwrt.rerank import CrossEncoderReranker
+from rwrt.rerank import CrossEncoderReranker, WeightedFeatureReranker
 from rwrt.retrieve import BiEncoderRetriever
 from rwrt.types import Candidate
 from rwrt.vocabulary import VocabularyStore
@@ -32,7 +32,10 @@ class RecommendationPipeline:
         self._vocabulary = vocabulary
         self._index = index or EmbeddingIndex(config, vocabulary)
         self._retriever = BiEncoderRetriever(config, vocabulary, self._index)
-        self._reranker = CrossEncoderReranker(config, vocabulary=vocabulary, index=self._index)
+        if config.reranker_type == "cross_encoder":
+            self._reranker = CrossEncoderReranker(config, vocabulary=vocabulary, index=self._index)
+        else:
+            self._reranker = WeightedFeatureReranker(config, vocabulary=vocabulary, index=self._index)
 
     @property
     def index(self) -> EmbeddingIndex:
