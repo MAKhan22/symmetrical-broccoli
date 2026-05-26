@@ -382,11 +382,11 @@ alpha.ipynb         benchmark notebook
 
 | Score | Formula | What it measures |
 |-------|---------|------------------|
-| **Combined** | `0.35·S + 0.35·F + 0.10·M − 0.15·D − 0.05·E` | Pedagogical utility (higher = better) |
+| **Combined** | `0.35·S + 0.35·F + 0.10·M + 0.15·D − 0.05·E` | Pedagogical utility (higher = better) |
 | Semantic coherence (S) | Cosine similarity to known-word centroid | Are recommendations semantically relevant? |
 | Frequency (F) | Normalised log-frequency | Are they useful/common words? |
-| Morph diversity (M) | Mean character-prefix overlap with known words | Do they share roots with what the learner knows? |
-| Rec diversity (D) | Mean pairwise embedding similarity in suggestions | Are the suggestions diverse (not synonyms)? |
+| Stem diversity (M) | Unique morphological stems / K | How morphologically varied are the suggestions? |
+| Rec diversity (D) | 1 − mean pairwise cosine among recs | Are the suggestions diverse (not synonyms)? |
 | Difficulty penalty (E) | Z-score of frequency drop from known-word average | Are they not too hard? |
 
 Profiles are sampled stratified across frequency bands (6 sizes × 5 draws = 30 profiles per config). The benchmark tests **3 bi-encoders × 3 query strategies × 30 profiles** with each reranker type → 720 evaluation rows total.
