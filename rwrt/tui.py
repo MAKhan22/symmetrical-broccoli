@@ -12,6 +12,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from rwrt.types import candidate_score_fields
+
 if TYPE_CHECKING:
     from rwrt.learner import LearnerProfile
     from rwrt.llm import OpenRouterClient
@@ -184,18 +186,13 @@ def _print_suggestions(
     table.add_column("#", style="cyan", justify="right", width=4)
     table.add_column("Word", style="bold")
     table.add_column("bi", justify="right")
+    table.add_column("wf", justify="right")
     table.add_column("cross", justify="right")
     table.add_column("freq", justify="right")
 
     for i, candidate in enumerate(results, 1):
-        bi = f"{candidate.bi_score:.3f}" if candidate.bi_score is not None else "—"
-        cross = (
-            f"{candidate.cross_score:.3f}"
-            if candidate.cross_score is not None
-            else "—"
-        )
-        freq = str(candidate.frequency) if candidate.frequency is not None else "—"
-        table.add_row(str(i), candidate.word, bi, cross, freq)
+        bi, wf, cross, freq = candidate_score_fields(candidate, precision=3)
+        table.add_row(str(i), candidate.word, bi, wf, cross, freq)
 
     console.print(table)
 

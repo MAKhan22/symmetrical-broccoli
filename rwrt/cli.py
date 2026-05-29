@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from rwrt.config import PipelineConfig
+from rwrt.types import format_candidate_scores
 from rwrt.index import EmbeddingIndex
 from rwrt.interactive import run_learn_session
 from rwrt.learner import LearnerProfile
@@ -228,10 +229,7 @@ def recommend_main(argv: list[str] | None = None) -> int:
     label = ", ".join(sorted(known_set))
     print(f"\nSuggestions ({len(known_set)} known): {label}\n")
     for i, c in enumerate(results, 1):
-        bi = f"{c.bi_score:.4f}" if c.bi_score is not None else "—"
-        cross = f"{c.cross_score:.4f}" if c.cross_score is not None else "—"
-        freq = c.frequency if c.frequency is not None else "—"
-        print(f"{i}. {c.word:20}  bi={bi}  cross={cross}  freq={freq}")
+        print(f"{i}. {c.word:20}  {format_candidate_scores(c)}")
     return 0
 
 

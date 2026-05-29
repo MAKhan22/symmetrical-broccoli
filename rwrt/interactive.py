@@ -4,6 +4,8 @@ import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from rwrt.types import format_candidate_scores
+
 if TYPE_CHECKING:
     from rwrt.learner import LearnerProfile
     from rwrt.pipeline import RecommendationPipeline
@@ -32,15 +34,8 @@ def run_learn_session(
 
         print_fn(f"\nKnown words: {len(profile)}")
         for i, candidate in enumerate(results, 1):
-            bi = f"{candidate.bi_score:.4f}" if candidate.bi_score is not None else "—"
-            cross = (
-                f"{candidate.cross_score:.4f}"
-                if candidate.cross_score is not None
-                else "—"
-            )
-            freq = candidate.frequency if candidate.frequency is not None else "—"
             print_fn(
-                f"  {i}. {candidate.word:20}  bi={bi}  cross={cross}  freq={freq}"
+                f"  {i}. {candidate.word:20}  {format_candidate_scores(candidate)}"
             )
 
         prompt = f"Pick 1-{len(results)} to learn, [r]efresh, [q]uit: "
