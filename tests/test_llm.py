@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -47,7 +48,7 @@ def test_complete_raises_on_http_error(llm_config: LLMConfig) -> None:
     client = httpx.Client(transport=httpx.MockTransport(handler))
     llm = OpenRouterClient(llm_config, _client=client)
 
-    with pytest.raises(RuntimeError, match="OpenRouter request failed"):
+    with pytest.raises(RuntimeError, match="OpenRouter authentication failed"):
         llm.complete([{"role": "user", "content": "hi"}])
 
     client.close()
@@ -99,3 +100,15 @@ def test_llm_config_from_env_missing_key(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
         LLMConfig.from_env(env_file=None)
+
+
+def test_llm_config_from_env_overrides_shell_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENROUTER_API_KEY=file-key\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "shell-key")
+
+    cfg = LLMConfig.from_env(env_file=str(env_file))
+
+    assert cfg.api_key == "file-key"

@@ -26,7 +26,7 @@ class LLMConfig:
             try:
                 from dotenv import load_dotenv
 
-                load_dotenv(env_file)
+                load_dotenv(env_file, override=True)
             except ImportError:
                 pass
 
@@ -83,6 +83,14 @@ class OpenRouterClient:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             detail = exc.response.text.strip()
+            if exc.response.status_code == 401:
+                raise RuntimeError(
+                    "OpenRouter authentication failed (401). "
+                    "Check OPENROUTER_API_KEY in your .env file. "
+                    "If the key is correct, a stale OPENROUTER_API_KEY in your shell "
+                    "environment may be overriding it; restart the shell or unset it. "
+                    f"API response: {detail}"
+                ) from exc
             raise RuntimeError(
                 f"OpenRouter request failed ({exc.response.status_code}): {detail}"
             ) from exc
