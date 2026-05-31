@@ -235,6 +235,15 @@ class WeightedFeatureReranker:
                     best_final = final
                     best_idx = i
 
-            selected.append(remaining.pop(best_idx)[0])
+            chosen, _ = remaining.pop(best_idx)
+            selected.append(
+                Candidate(
+                    word=chosen.word,
+                    bi_score=chosen.bi_score,
+                    feature_score=best_final,
+                    cross_score=chosen.cross_score,
+                    frequency=chosen.frequency,
+                )
+            )
 
         return selected
