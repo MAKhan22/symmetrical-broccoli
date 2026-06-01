@@ -1,0 +1,39 @@
+\begin{thebibliography}{1}
+
+\bibitem{carbonell1998mmr}
+Jaime Carbonell and Jade Goldstein.
+\newblock The use of {MMR}, diversity-based reranking for reordering documents
+  and producing summaries.
+\newblock In {\em Proceedings of the 21st Annual International {ACM} {SIGIR}
+  Conference on Research and Development in Information Retrieval}, pages
+  335--336. ACM, 1998.
+
+\bibitem{krashen1977monitor}
+Stephen~D. Krashen.
+\newblock The monitor model of adult second language performance.
+\newblock In M.~Burt, H.~Dulay, and M.~Finocchiaro, editors, {\em Viewpoints on
+  English as a Second Language}, pages 152--161. Regents, 1977.
+
+\bibitem{lison-tiedemann-2016-opensubtitles2016}
+Pierre Lison and J{\"o}rg Tiedemann.
+\newblock {O}pen{S}ubtitles2016: Extracting large parallel corpora from movie
+  and {TV} subtitles.
+\newblock In Nicoletta Calzolari, Khalid Choukri, Thierry Declerck, Sara Goggi,
+  Marko Grobelnik, Bente Maegaard, Joseph Mariani, Helene Mazo, Asuncion
+  Moreno, Jan Odijk, and Stelios Piperidis, editors, {\em Proceedings of the
+  Tenth International Conference on Language Resources and Evaluation
+  ({LREC}'16)}, pages 923--929, Portoro{\v{z}}, Slovenia, May 2016. European
+  Language Resources Association (ELRA).
+
+\bibitem{vygotsky1978mind}
+L.~S. Vygotsky.
+\newblock {\em Mind in Society: Development of Higher Psychological Processes}.
+\newblock Harvard University Press, Cambridge, MA, 1978.
+
+\bibitem{zhou2025simulation}
+Liu-Ying Zhou and Yuan-Yuan Wang.
+\newblock Simulation of personalized english learning path recommendation
+  system based on knowledge graph and deep reinforcement learning.
+\newblock {\em Scientific Reports}, 15:34554, 2025.
+
+\end{thebibliography}
